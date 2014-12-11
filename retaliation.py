@@ -19,43 +19,11 @@
 # 
 # RETALIATION - A Jenkins "Extreme Feedback" Contraption
 #
-#    Lava Lamps are for pussies! Retaliate to a broken build with a barrage 
-#    of foam missiles.
+# Modification of the original RETALATION script from:
 #
-# Steps to use:
-#
-#  1.  Mount your Dream Cheeky Thunder USB missile launcher in a central and 
-#      fixed location.
-#
-#  2.  Copy this script onto the system connected to your missile lanucher.
-#
-#  3.  Modify your `COMMAND_SETS` in the `retaliation.py` script to define 
-#      your targeting commands for each one of your build-braking coders 
-#      (their user ID as listed in Jenkins).  A command set is an array of 
-#      move and fire commands. It is recommend to start each command set 
-#      with a "zero" command.  This parks the launcher in a known position 
-#      (bottom-left).  You can then use "up" and "right" followed by a 
-#      time (in milliseconds) to position your fire.
-# 
-#      You can test a set by calling retaliation.py with the target name. 
-#      e.g.:  
-#
-#           retaliation.py "[developer's user name]"
-#
-#      Trial and error is the best approch. Consider doing this secretly 
-#      after hours for best results!
-#
-#  4.  Setup the Jenkins "notification" plugin. Define a UDP endpoint 
-#      on port 22222 pointing to the system hosting this script.
-#      Tip: Make sure your firewall is not blocking UDP on this port.
-#
-#  5.  Start listening for failed build events by running the command:
-#          retaliation.py stalk
-#      (Consider setting this up as a boot/startup script. On Windows 
-#      start with pythonw.exe to keep it running hidden in the 
-#      background.)
-#
-#  6.  Wait for DEFCON 1 - Let the war games begin!
+# This version will take two command line parameter upon invocation. Drive the
+# launcher to this coordinates fire the missle and then return back to its start
+# 0 0 position.
 #
 #
 #  Requirements:
@@ -122,23 +90,6 @@ COMMAND_SETS = {
     ),
 }
 
-#
-# The UDP port to listen to Jenkins events on (events are generated/supplied 
-# by Jenkins "notification" plugin)
-#
-JENKINS_NOTIFICATION_UDP_PORT   = 22222
-
-#
-# The URL of your Jenkins server - used to callback to determine who broke 
-# the build.
-#
-JENKINS_SERVER                  = "http://192.168.1.100:23456"
-
-#
-# If you're Jenkins server is secured by HTTP basic auth, sent the
-# username and password here.  Else leave this blank.
-HTTPAUTH_USER                   = ""
-HTTPAUTH_PASS                   = ""
 
 ##########################  ENG CONFIG  #########################
 
@@ -159,8 +110,6 @@ def usage():
     print "Usage: retaliation.py [command] [value]"
     print ""
     print "   commands:"
-    print "     stalk - sit around waiting for a Jenkins CI failed build"
-    print "             notification, then attack the perpetrator!"
     print ""
     print "     up    - move up <value> milliseconds"
     print "     down  - move down <value> milliseconds"
@@ -263,30 +212,6 @@ def run_command_set(commands):
         run_command(cmd, value)
 
 
-def jenkins_target_user(user):
-    match = False
-    # Not efficient but our user list is probably less than 1k.
-    # Do a case insenstive search for convenience.
-    for key in COMMAND_SETS:
-        if key.lower() == user.lower():
-            # We have a command set that targets our user so got for it!
-            run_command_set(COMMAND_SETS[key])
-            match = True
-            break
-    if not match:
-        print "WARNING: No target command set defined for user %s" % user
-
-
-def read_url(url):
-    request = urllib2.Request(url)
-
-    if HTTPAUTH_USER and HTTPAUTH_PASS:
-        authstring = base64.encodestring('%s:%s' % (HTTPAUTH_USER, HTTPAUTH_PASS))
-        authstring = authstring.replace('\n', '')
-        request.add_header("Authorization", "Basic %s" % authstring)
-
-    return urllib2.urlopen(request).read()
-
 
 def jenkins_get_responsible_user(job_name):
     # Call back to Jenkins and determin who broke the build. (Hacky)
@@ -303,30 +228,6 @@ def jenkins_get_responsible_user(job_name):
         return None
 
 
-def jenkins_wait_for_event():
-
-    # Data in the format: 
-    #   {"name":"Project", "url":"JobUrl", "build":{"number":1, "phase":"STARTED", "status":"FAILURE" }}
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(('', JENKINS_NOTIFICATION_UDP_PORT))
-
-    while True:
-        data, addr = sock.recvfrom(8 * 1024)
-        try:
-            notification_data = json.loads(data)
-            status = notification_data["build"]["status"].upper()
-            phase  = notification_data["build"]["phase"].upper()
-            if phase == "FINISHED" and status.startswith("FAIL"):
-                target = jenkins_get_responsible_user(notification_data["name"])
-                if target == None:
-                    print "WARNING: Could not identify the user who broke the build!"
-                    continue
-
-                print "Build Failed! Targeting user: " + target
-                jenkins_target_user(target)
-        except:
-            pass
                 
 
 def main(args):
@@ -337,22 +238,20 @@ def main(args):
 
     setup_usb()
 
-    if args[1] == "stalk":
-        print "Listening and waiting for Jenkins failed build events..."
-        jenkins_wait_for_event()
-        # Will never return
-        return
-
     # Process any passed commands or command_sets
-    command = args[1]
-    value = 0
-    if len(args) > 2:
-        value = int(args[2])
-
-    if command in COMMAND_SETS:
-        run_command_set(COMMAND_SETS[command])
-    else:
-        run_command(command, value)
+    yaw = 0
+    pitch = 0
+    
+    yaw = int(args[1])
+    pitch = int(args[2])
+    
+    run_command("reset", 0)
+    run_command("right", yaw+100)
+    run_command("left", 100)
+    run_command("up", pitch+100)
+    run_command("down", 100)
+    run_command("fire", 1)
+    run_command("reset", 0)
 
 
 if __name__ == '__main__':
